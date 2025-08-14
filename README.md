@@ -6,13 +6,13 @@ An AI-powered maritime intelligence platform that continuously monitors ship beh
 
 ## 📸 Screenshots
 
-![OceanWatch Interface](images/visual1.png)
+![OceanWatch Interface](OceanWatch3/images/visual1.png)
 *Interactive map with vessel monitoring and behavior analysis*
 
-![Visuals](images/visual.png)
+![Visuals](OceanWatch3/images/visual.png)
 *Main interface showing real-time ship tracking and alert management*
 
-![RAG Agent](images/visual3.png)
+![RAG Agent](OceanWatch3/images/visual3.png)
 *AI-powered alert generation and risk assessment interface*
 
 ## 🌟 Features
