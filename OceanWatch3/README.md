@@ -76,7 +76,7 @@ npm install
 Create a `.env` file in the `server` directory:
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
-MONGODB_URI=mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main
+MONGODB_URI=mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main
 MONGODB_DB=main
 ```
 

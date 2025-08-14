@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { MongoClient } from 'mongodb';
 
-const MONGODB_URI = "mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main";
+const MONGODB_URI = "mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main";
 const DB_NAME = "main";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {

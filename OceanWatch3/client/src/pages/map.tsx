@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertPanel } from '@/components/alerts/alert-panel';
 import { Alert } from '@/services/alertService';
 import { ChatOverlay } from '@/components/chat/chat-overlay';
+import PortCallsSection from '@/components/PortCallsSection';
 
 mapboxgl.accessToken = 'pk.eyJ1Ijoia2FpbWFyc2hsYW5kIiwiYSI6ImNqb205dDhvczA0dDEzcm81Y2ljdnY0dWMifQ.HK_10izvkRBM8bQsXEc0PQ';
 
@@ -596,6 +597,13 @@ export default function Map() {
                             eventsInNoTakeMpasCount={selected.eventsInNoTakeMpasCount || 0}
                             eventsInRfmoWithoutKnownAuthorizationCount={selected.eventsInRfmoWithoutKnownAuthorizationCount || 0}
                             height={64}
+                          />
+                        )}
+                        {/* Port Calls Section */}
+                        {selected && (
+                          <PortCallsSection
+                            vesselId={selected.imo || selected.mmsi || selected.id}
+                            vesselName={selected.shipname}
                           />
                         )}
                         <Button variant='default' className='opacity-70' size='sm'>

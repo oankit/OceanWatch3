@@ -14,7 +14,7 @@ class Config:
     OPENAI_TEMPERATURE: float = float(os.getenv("OPENAI_TEMPERATURE", "0.1"))
     
     # MongoDB Configuration
-    MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main")
+    MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main")
     MONGODB_DB: str = os.getenv("MONGODB_DB", "main")
     
     # GFW API Configuration

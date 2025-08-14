@@ -72,7 +72,7 @@ In your Render service settings:
 
 **Environment Variables:**
 - `NODE_ENV` = `production`
-- `MONGODB_URI` = `mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main`
+- `MONGODB_URI` = `mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main`
 - `MONGODB_DB` = `main`
 - `REDIS_URL` = `redis://localhost:6379` *(optional - app falls back to this anyway)*
 

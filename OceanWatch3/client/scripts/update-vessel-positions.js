@@ -2,7 +2,7 @@ const { MongoClient } = require('mongodb');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 
-const MONGODB_URI = 'mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main';
+const MONGODB_URI = 'mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main';
 const DB_NAME = 'main';
 
 class WindBorneClient {

@@ -112,10 +112,10 @@ export function ChatOverlay({ isOpen, onToggle, selectedShipId }: ChatOverlayPro
         className={`fixed z-50 bg-white border border-gray-300 rounded-lg shadow-2xl 
           bottom-6 right-6 max-h-[calc(100vh-3rem)] max-w-[calc(100vw-3rem)] overflow-hidden ${
           isExpanded 
-            ? 'w-96 h-[600px]'
+            ? 'w-[420px] h-[500px]'
             : isMinimized 
               ? 'w-80 h-12' 
-              : 'w-80 h-96'
+              : 'w-96 h-[480px]'
         }`}
         initial={{ scale: 0.8, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}

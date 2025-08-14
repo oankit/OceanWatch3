@@ -7,6 +7,7 @@ An intelligent AI agent built with Pydantic and LangChain for monitoring maritim
 - **Continuous Monitoring**: Real-time analysis of ship movements and behavior patterns
 - **Behavior Analysis**: AI-powered risk assessment and pattern recognition
 - **Alert Generation**: Automated alerts for suspicious activities with detailed reasoning
+- **Maritime News Intelligence**: Real-time maritime news search using Perplexity AI
 - **MongoDB Integration**: Seamless connection to your maritime database
 - **GPT-4 Powered**: Advanced reasoning and analysis capabilities
 - **Configurable**: Flexible configuration for different monitoring scenarios
@@ -25,6 +26,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 MONGODB_URI=mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main
 MONGODB_DB=main
 GFW_API_KEY=your_gfw_api_key_here
+PERPLEXITY_API_KEY=your_perplexity_api_key_here
 ```
 
 3. **Validate Configuration**:
@@ -198,6 +200,35 @@ class ShipBehaviorAnalysis(BaseModel):
 
 ### Behavior Analyzer Tool
 - `analyze_behavior`: Analyze behavior patterns and calculate risk scores
+
+### Maritime News Tool
+- `maritime_news_search`: Search for current maritime news and industry developments using Perplexity AI
+- Provides real-time intelligence on shipping incidents, port conditions, and maritime regulations
+- Filters results from trusted maritime news sources
+- Returns structured data with citations and timestamps
+
+#### Maritime News Usage Examples
+```python
+# Search for recent maritime incidents
+result = agent.maritime_news_tool._run("shipping accidents Red Sea")
+
+# Get port condition updates
+result = agent.maritime_news_tool._run("port congestion Los Angeles")
+
+# Check for regulatory changes
+result = agent.maritime_news_tool._run("IMO regulations 2024")
+```
+
+#### Maritime News Response Format
+```json
+{
+  "status": "success",
+  "query": "shipping accidents Red Sea",
+  "content": "Recent maritime incidents in the Red Sea...",
+  "citations": ["https://maritime-executive.com/..."],
+  "timestamp": "2024-12-01T14:30:22Z"
+}
+```
 
 ## 🚨 Alert Examples
 

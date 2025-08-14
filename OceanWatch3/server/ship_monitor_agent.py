@@ -6,8 +6,10 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
+import json
 
 import openai
+import requests
 from pydantic import BaseModel, Field
 from pymongo import MongoClient
 from pymongo.collection import Collection
@@ -32,6 +34,11 @@ if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
 
 openai.api_key = OPENAI_API_KEY
+
+# Perplexity Configuration
+PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
+if not PERPLEXITY_API_KEY:
+    raise ValueError("PERPLEXITY_API_KEY environment variable is required")
 
 class AlertSeverity(str, Enum):
     LOW = "low"
@@ -309,6 +316,91 @@ class BehaviorAnalyzerTool(BaseTool):
         except Exception as e:
             return f"Error analyzing behavior: {str(e)}"
 
+class MaritimeNewsTool(BaseTool):
+    name: str = "maritime_news_search"
+    description: str = "Search for recent maritime news and updates using Perplexity AI. Useful for getting current information about shipping incidents, port conditions, maritime regulations, and industry developments."
+    
+    def _run(self, query: str, **kwargs) -> str:
+        """Search for maritime news using Perplexity API"""
+        try:
+            headers = {
+                "Authorization": f"Bearer {PERPLEXITY_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            # Enhance the query with maritime-specific context
+            enhanced_query = f"maritime shipping ocean {query} latest news updates"
+            
+            payload = {
+                "model": "sonar",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a maritime intelligence assistant. Provide concise, factual information about maritime news, shipping incidents, port conditions, and industry developments. Focus on recent events and their potential impact on maritime operations."
+                    },
+                    {
+                        "role": "user",
+                        "content": enhanced_query
+                    }
+                ],
+                "search_domain_filter": ["maritime-executive.com", "tradewindsnews.com", "lloydslist.com", "seatrade-maritime.com", "marinelink.com"],
+                "search_recency_filter": "month",
+                "return_citations": True,
+                "return_images": False,
+                "max_tokens": 1000
+            }
+            
+            response = requests.post(
+                "https://api.perplexity.ai/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                
+                # Extract citations if available
+                citations = []
+                if "citations" in result:
+                    citations = result["citations"]
+                elif "search_results" in result:
+                    citations = [item.get("url", "") for item in result["search_results"]]
+                
+                return json.dumps({
+                    "status": "success",
+                    "query": query,
+                    "content": content,
+                    "citations": citations,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }, indent=2)
+            else:
+                return json.dumps({
+                    "status": "error",
+                    "message": f"API request failed with status {response.status_code}",
+                    "details": response.text
+                }, indent=2)
+                
+        except requests.exceptions.Timeout:
+            return json.dumps({
+                "status": "error",
+                "message": "Request timed out",
+                "details": "The Perplexity API request took too long to respond"
+            }, indent=2)
+        except requests.exceptions.RequestException as e:
+            return json.dumps({
+                "status": "error",
+                "message": "Network error occurred",
+                "details": str(e)
+            }, indent=2)
+        except Exception as e:
+            return json.dumps({
+                "status": "error",
+                "message": "Unexpected error occurred",
+                "details": str(e)
+            }, indent=2)
+
 class ShipMonitorAgent:
     def __init__(self):
         self.client = MongoClient(MONGODB_URI)
@@ -323,8 +415,9 @@ class ShipMonitorAgent:
         self.mongodb_tool = MongoDBTool(self.db)
         self.alert_tool = AlertGeneratorTool(self.db)
         self.behavior_tool = BehaviorAnalyzerTool(self.db)
+        self.maritime_news_tool = MaritimeNewsTool()
         
-        self.tools = [self.mongodb_tool, self.alert_tool, self.behavior_tool]
+        self.tools = [self.mongodb_tool, self.alert_tool, self.behavior_tool, self.maritime_news_tool]
         
         # Create agent
         self.agent = self._create_agent()
@@ -344,6 +437,7 @@ Your primary responsibilities:
 2. Analyze behavior patterns to identify potential security risks
 3. Generate alerts for suspicious activities with detailed reasoning
 4. Continuously assess risk levels for vessels
+5. Search for current maritime news and industry developments to provide context
 
 Key monitoring areas:
 - Loitering in sensitive areas
@@ -359,6 +453,7 @@ When analyzing behavior, consider:
 - Vessel type and flag
 - Time patterns
 - Frequency of events
+- Current maritime news and incidents that might affect operations
 
 Generate alerts with:
 - Clear description of suspicious activity
@@ -366,6 +461,12 @@ Generate alerts with:
 - Appropriate severity level
 - Specific location and timestamp
 - Recommended actions
+
+You can search for current maritime news using the maritime_news_search tool to:
+- Get updates on shipping incidents, port conditions, and maritime regulations
+- Provide context for unusual vessel behavior
+- Stay informed about industry developments that might affect ship operations
+- Gather intelligence on maritime security threats
 
 Always provide detailed reasoning for your assessments and recommendations."""
 

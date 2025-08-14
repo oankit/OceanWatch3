@@ -15,7 +15,7 @@ class MongoDBConnection:
     def __init__(self):
         self.client: Optional[MongoClient] = None
         self.db: Optional[Database] = None
-        self.connection_string = os.getenv('MONGODB_URI', 'mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main')
+        self.connection_string = os.getenv('MONGODB_URI', 'mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main')
         
     def connect(self) -> Database:
         """Establish connection to MongoDB"""

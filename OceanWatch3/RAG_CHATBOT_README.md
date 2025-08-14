@@ -68,7 +68,7 @@ client/src/
 ```bash
 # Set required environment variables
 export OPENAI_API_KEY="your_openai_api_key"
-export MONGODB_URI="mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main"
+export MONGODB_URI="mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main"
 ```
 
 ### **2. Backend Dependencies**
@@ -169,7 +169,7 @@ When a ship is selected on the map, the chatbot automatically focuses on that ve
 OPENAI_API_KEY=your_openai_api_key
 
 # Optional (defaults provided)
-MONGODB_URI=mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main
+MONGODB_URI=mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main
 RAG_SERVER_PORT=8001
 RAG_MAX_RESULTS=10
 RAG_CHUNK_SIZE=1000

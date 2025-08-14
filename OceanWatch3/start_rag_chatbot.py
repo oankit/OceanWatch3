@@ -118,7 +118,7 @@ def main():
     print("   • Conversation history persistence")
     
     print("\n⚙️  Configuration:")
-    print("   • MongoDB: mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main")
+    print("   • MongoDB: mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main")
     print("   • OpenAI: GPT-4 Turbo for generation")
     print("   • Embeddings: text-embedding-3-small")
     print("   • Collections: vessels, events, ship_alerts, vessel_insights, ship_behavior_analysis")

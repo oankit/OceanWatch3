@@ -8,7 +8,7 @@ let cachedDb: Db | null = null
 async function getDb(): Promise<Db> {
   if (cachedDb && cachedClient) return cachedDb
 
-  const uri = process.env.MONGODB_URI || 'mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main'
+  const uri = process.env.MONGODB_URI || 'mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main'
   const dbName = process.env.MONGODB_DB || 'main'
 
   const client = await (cachedClient?.connect?.() ? Promise.resolve(cachedClient) : new MongoClient(uri).connect())

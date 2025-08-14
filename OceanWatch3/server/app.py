@@ -4,7 +4,7 @@ import requests
 import os
 
 app = FastAPI()
-DB_URL = os.getenv('MONGODB_URI', 'mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main')
+DB_URL = os.getenv('MONGODB_URI', 'mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main')
 
 @app.get("/")
 def index():

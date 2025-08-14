@@ -31,7 +31,7 @@ Create a `.env` file in the **root directory** (same level as `client/` and `ser
 OPENAI_API_KEY=your-openai-api-key-here
 
 # MongoDB Connection String
-MONGODB_URI=mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main
+MONGODB_URI=mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main
 ```
 
 **Note**: The system automatically loads environment variables from the root `.env` file, so you don't need to create separate files in the client directory.
