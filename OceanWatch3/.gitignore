@@ -1,0 +1,46 @@
+
+client/node_modules
+client/.pnp
+client/.pnp.js
+client/.yarn/install-state.gz
+
+# testing
+client/coverage
+
+# frontend
+/client/.next/
+/client/out/
+/client/build
+/client/.DS_Store
+/client/*.pem
+/client/npm-debug.log*
+/client/yarn-debug.log*
+/client/yarn-error.log*
+/client/.env*.local
+/client/.vercel
+/client/*.tsbuildinfo
+/client/next-env.d.ts
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+client/npm-debug.log*
+client/yarn-debug.log*
+client/yarn-error.log*
+
+# local env files
+*.env
+*.venv
+*__pycache__
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# OceanWatch keep-alive
+client/.OceanWatch-keepalive.*

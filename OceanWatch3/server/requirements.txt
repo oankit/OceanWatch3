@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+asyncio
+pymongo
+requests
+pydantic
+alive-progress
+openai
+langchain
+langchain-openai
+python-dotenv
+schedule
+tenacity
+numpy
