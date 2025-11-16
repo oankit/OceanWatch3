@@ -4,6 +4,9 @@
 
 An AI-powered maritime intelligence platform that continuously monitors ship behavior patterns and generates real-time alerts for suspicious activities.
 
+## Demo
+[Watch on YouTube](https://www.youtube.com/watch?v=FeQheXtGMyQ)
+
 ## 📸 Screenshots
 
 ![OceanWatch Interface](OceanWatch3/images/visual1.png)
