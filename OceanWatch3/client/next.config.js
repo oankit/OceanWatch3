@@ -11,6 +11,10 @@ if (require('fs').existsSync(parentEnvPath)) {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
+  // The app lives on /map; the index page is empty
+  async redirects() {
+    return [{ source: '/', destination: '/map', permanent: false }]
+  },
   // Next rejects undefined values here, so only forward the ones that are set
   env: Object.fromEntries(
     Object.entries({
