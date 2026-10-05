@@ -173,12 +173,14 @@ Always be precise with maritime terminology and provide actionable insights when
         if not context_documents:
             return 'low'
         
-        # Calculate average similarity score
-        avg_similarity = sum(doc.get('similarity_score', 0) for doc in context_documents) / len(context_documents)
-        
-        if avg_similarity > 0.8:
+        # Average of the best matches; text-embedding-3-small cosine scores for strong
+        # matches typically sit around 0.4-0.6, so thresholds are set for that range
+        top = sorted((doc.get('similarity_score', 0) for doc in context_documents), reverse=True)[:3]
+        avg_similarity = sum(top) / len(top)
+
+        if avg_similarity >= 0.45:
             return 'high'
-        elif avg_similarity > 0.6:
+        elif avg_similarity >= 0.35:
             return 'medium'
         else:
             return 'low'

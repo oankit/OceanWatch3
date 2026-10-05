@@ -2,7 +2,29 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Bot, User, Loader2, AlertCircle, Database, Ship, AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { ChatMessage, ContextInfo } from '@/services/chatService';
+
+// Assistant replies are markdown (headings, bold, lists, tables)
+const markdownComponents = {
+  h1: (props: any) => <h3 className="text-sm font-semibold text-white mt-3 mb-1 first:mt-0" {...props} />,
+  h2: (props: any) => <h3 className="text-sm font-semibold text-white mt-3 mb-1 first:mt-0" {...props} />,
+  h3: (props: any) => <h4 className="text-sm font-semibold text-zinc-100 mt-3 mb-1 first:mt-0" {...props} />,
+  p: (props: any) => <p className="mb-2 last:mb-0" {...props} />,
+  strong: (props: any) => <strong className="font-semibold text-white" {...props} />,
+  ul: (props: any) => <ul className="list-disc pl-5 mb-2 space-y-1 last:mb-0" {...props} />,
+  ol: (props: any) => <ol className="list-decimal pl-5 mb-2 space-y-1 last:mb-0" {...props} />,
+  a: (props: any) => <a className="text-blue-400 underline" target="_blank" rel="noreferrer" {...props} />,
+  code: (props: any) => <code className="bg-zinc-900 rounded px-1 py-0.5 text-xs" {...props} />,
+  table: (props: any) => (
+    <div className="overflow-x-auto mb-2 -mx-1">
+      <table className="w-full text-xs border-collapse" {...props} />
+    </div>
+  ),
+  th: (props: any) => <th className="text-left font-semibold text-zinc-200 border-b border-zinc-600 px-2 py-1 align-top" {...props} />,
+  td: (props: any) => <td className="border-b border-zinc-700 px-2 py-1 align-top" {...props} />,
+};
 
 interface ChatMessagesProps {
   messages: ChatMessage[];
@@ -64,7 +86,15 @@ export function ChatMessages({ messages, isLoading, error, contextInfo }: ChatMe
                 : 'bg-zinc-800 text-zinc-100 border border-zinc-700'
             }`}
           >
-            <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+            {message.role === 'assistant' ? (
+              <div className="text-sm leading-relaxed">
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  {message.content}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+            )}
             
             {message.role === 'assistant' && (
               <div className="mt-2 text-xs text-zinc-400">

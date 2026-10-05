@@ -143,22 +143,14 @@ def _compact_event(e: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in out.items() if v not in (None, [], {})}
 
 
-@tool
-def get_vessel_profile(vessel_id: str) -> str:
-    """Get a vessel's identity (name, flag, type, MMSI), its last known position and its
-    summary risk counters (AIS gaps, events in no-take MPAs, unauthorised RFMO fishing)."""
+def vessel_profile(vessel_id: str) -> str:
     v = db.vessel.find_one({"vessel_id": vessel_id}, {"_id": 0, "events_counts_by_dataset": 0})
     if not v:
         return json.dumps({"error": f"vessel {vessel_id} not found"})
     return json.dumps(v, default=str)
 
 
-@tool
-def get_vessel_events(vessel_id: str, days: int = 365, event_type: Optional[str] = None, limit: int = 40) -> str:
-    """List a vessel's most recent events, newest first. event_type can be one of
-    'gap' (AIS transponder off), 'loitering', 'encounter' (meeting another vessel at sea)
-    or 'port_visit'. Each event includes position, duration and region context such as
-    whether it was inside a no-take marine protected area or on the high seas."""
+def vessel_events(vessel_id: str, days: int = 365, event_type: Optional[str] = None, limit: int = 40) -> str:
     since = datetime.now(timezone.utc) - timedelta(days=days)
     query: Dict[str, Any] = {"vessel_id": vessel_id}
     if event_type:
@@ -172,16 +164,17 @@ def get_vessel_events(vessel_id: str, days: int = 365, event_type: Optional[str]
                        "events": [_compact_event(e) for e in events[:min(limit, 60)]]}, default=str)
 
 
-@tool
-def create_alert(vessel_id: str, alert_type: AlertType, severity: AlertSeverity, description: str,
-                 reasoning: str, evidence: List[str], event_id: Optional[str] = None) -> str:
-    """Raise an alert for suspicious behaviour. Link it to the event_id it is mainly about
-    so it is placed at that event's time and position. Only raise alerts the evidence
-    supports; reasoning should explain why the behaviour is suspicious, not just restate it."""
+def save_alert(vessel_id: str, alert_type: AlertType, severity: AlertSeverity, description: str,
+               reasoning: str, evidence: List[str], event_id: Optional[str] = None) -> str:
     vessel = db.vessel.find_one({"vessel_id": vessel_id}, {"name": 1, "lat": 1, "lon": 1})
     if not vessel:
         return f"Error: vessel {vessel_id} not found"
-    event = db.gfw_ship_events.find_one({"vessel_id": vessel_id, "id": event_id}) if event_id else None
+    event = None
+    if event_id:
+        event = db.gfw_ship_events.find_one({"vessel_id": vessel_id, "id": event_id.strip()})
+        if not event:
+            # Let the model correct a mistyped id instead of misplacing the alert
+            return f"Error: event_id {event_id!r} is not one of this vessel's events. Copy it exactly from get_vessel_events."
     when = (_parse_time(event.get("end")) or _parse_time(event.get("start"))) if event else None
     position = (event or {}).get("position") or {}
     lat, lon = position.get("lat", vessel.get("lat")), position.get("lon", vessel.get("lon"))
@@ -238,7 +231,8 @@ SYSTEM_PROMPT = """You are OceanWatch, a maritime intelligence analyst investiga
 unreported and unregulated (IUU) fishing and other suspicious behaviour, using Global Fishing Watch data.
 
 For the vessel you are given:
-1. Call get_vessel_profile, then get_vessel_events to review its activity.
+1. Call get_vessel_profile, then get_vessel_events to review its activity (the tools already
+   know which vessel you are investigating).
 2. Look for genuinely suspicious patterns, for example:
    - AIS gaps (transponder off), especially long ones, ones flagged as likely intentional,
      or ones near protected areas or other vessels
@@ -259,7 +253,32 @@ For the vessel you are given:
 Finish with a two-sentence assessment of the vessel."""
 
 
-def build_agent():
+def build_agent(vessel_id: str):
+    """Agent whose tools are bound to one vessel, so the model never has to copy its long id."""
+
+    @tool
+    def get_vessel_profile() -> str:
+        """Get the vessel's identity (name, flag, type, MMSI), its last known position and its
+        summary risk counters (AIS gaps, events in no-take MPAs, unauthorised RFMO fishing)."""
+        return vessel_profile(vessel_id)
+
+    @tool
+    def get_vessel_events(days: int = 365, event_type: Optional[str] = None, limit: int = 40) -> str:
+        """List the vessel's most recent events, newest first. event_type can be one of
+        'gap' (AIS transponder off), 'loitering', 'encounter' (meeting another vessel at sea)
+        or 'port_visit'. Each event includes position, duration and region context such as
+        whether it was inside a no-take marine protected area or on the high seas."""
+        return vessel_events(vessel_id, days, event_type, limit)
+
+    @tool
+    def create_alert(alert_type: AlertType, severity: AlertSeverity, description: str,
+                     reasoning: str, evidence: List[str], event_id: Optional[str] = None) -> str:
+        """Raise an alert for suspicious behaviour by this vessel. Link it to the event_id it is
+        mainly about (copied exactly from get_vessel_events) so it is placed at that event's
+        time and position. Only raise alerts the evidence supports; reasoning should explain
+        why the behaviour is suspicious, not just restate it."""
+        return save_alert(vessel_id, alert_type, severity, description, reasoning, evidence, event_id)
+
     llm = ChatOpenAI(model=OPENAI_MODEL, api_key=OPENAI_API_KEY, use_responses_api=True)
     tools = [get_vessel_profile, get_vessel_events, create_alert]
     if PERPLEXITY_API_KEY:
@@ -267,7 +286,8 @@ def build_agent():
     return create_agent(llm, tools, system_prompt=SYSTEM_PROMPT)
 
 
-def pick_candidates(max_ships: int, types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+def pick_candidates(max_ships: int, types: Optional[List[str]] = None,
+                    vessel_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """Vessels worth an LLM's attention: risk counters first, then the most at-sea activity."""
     at_sea = {r["_id"]: r["n"] for r in db.gfw_ship_events.aggregate([
         {"$match": {"type": {"$in": ["gap", "encounter", "loitering"]}}},
@@ -276,6 +296,8 @@ def pick_candidates(max_ships: int, types: Optional[List[str]] = None) -> List[D
     query: Dict[str, Any] = {"noEvents": False}
     if types:
         query["type"] = {"$in": [t.upper() for t in types]}
+    if vessel_ids:
+        query["vessel_id"] = {"$in": vessel_ids}
     vessels = list(db.vessel.find(query, {"_id": 0, "vessel_id": 1, "name": 1, "aisOff_count": 1,
                                                          "eventsInNoTakeMpas_count": 1,
                                                          "eventsInRfmoWithoutKnownAuthorization_count": 1}))
@@ -288,15 +310,15 @@ def pick_candidates(max_ships: int, types: Optional[List[str]] = None) -> List[D
     return vessels[:max_ships]
 
 
-def scan(max_ships: int, types: Optional[List[str]] = None) -> None:
-    agent = build_agent()
-    candidates = pick_candidates(max_ships, types)
+def scan(max_ships: int, types: Optional[List[str]] = None, vessel_ids: Optional[List[str]] = None) -> None:
+    candidates = pick_candidates(max_ships, types, vessel_ids)
     print(f"OceanWatch agent ({OPENAI_MODEL}) scanning {len(candidates)} vessels in '{DB_NAME}'")
     before = db.ship_alerts.count_documents({})
     for i, v in enumerate(candidates, 1):
         started = time.time()
         try:
-            result = agent.invoke({"messages": [{"role": "user", "content": f"Investigate vessel {v['vessel_id']} ({v.get('name')})."}]})
+            agent = build_agent(v["vessel_id"])
+            result = agent.invoke({"messages": [{"role": "user", "content": f"Investigate the vessel {(v.get('name') or 'unnamed').strip()}."}]})
             final = result["messages"][-1]
             summary = final.text if hasattr(final, "text") else str(final.content)
             print(f"[{i}/{len(candidates)}] {v.get('name')} ({time.time() - started:.0f}s): {' '.join(str(summary).split())[:220]}")
@@ -309,10 +331,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OceanWatch ship monitor agent")
     parser.add_argument("--max-ships", type=int, default=25)
     parser.add_argument("--types", nargs="+", help="only vessel types, e.g. FISHING CARRIER")
+    parser.add_argument("--vessel-ids", nargs="+", help="only these vessel ids")
     parser.add_argument("--watch", type=int, metavar="MINUTES", help="rescan on this interval instead of exiting")
     args = parser.parse_args()
     while True:
-        scan(args.max_ships, args.types)
+        scan(args.max_ships, args.types, args.vessel_ids)
         if not args.watch:
             break
         time.sleep(args.watch * 60)

@@ -342,8 +342,8 @@ export default function Map() {
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: 'mapbox://styles/omarankit2001/cmebb1taj00r801pg7rj1h7a9',
-      center: [-74.0060, 40.7128],
-      zoom: 3,
+      center: [110, 5], // Indo-Pacific, where most flagged vessels operate
+      zoom: 1.6,
       // Flat 2D map: no globe, rotation or tilt
       projection: 'mercator',
       pitch: 0,
