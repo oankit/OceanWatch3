@@ -81,9 +81,9 @@ def fetch_events_for_dataset(client, vessel_id: str, dataset_id: str, start_date
         page_entries = [e if isinstance(e, dict) else to_dict(e) for e in (response.entries or [])]
         entries.extend([{**e, "_datasetId": dataset_id} for e in page_entries])
         total = response.total if hasattr(response, "total") else max(total, len(entries))
-        if response.nextOffset is None:
+        if response.next_offset is None:
             break
-        offset = response.nextOffset
+        offset = response.next_offset
         time.sleep(0.05)
     return dataset_id, entries, total
 
