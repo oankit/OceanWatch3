@@ -24,7 +24,9 @@ def load_gfw_client():
 
 
 def get_mongo_collections(write_events_collection: bool) -> Tuple[Any, Optional[Any]]:
-    mongo_uri = os.getenv("MONGODB_URI", "mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main")
+    mongo_uri = os.getenv("MONGODB_URI", "")
+    if not mongo_uri:
+        raise ValueError("MONGODB_URI environment variable is required")
     db_name = os.getenv("MONGODB_DB", "main")
     client = MongoClient(mongo_uri, serverSelectionTimeoutMS=10000)
     db = client[db_name]

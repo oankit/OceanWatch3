@@ -15,11 +15,13 @@ class MongoDBConnection:
     def __init__(self):
         self.client: Optional[MongoClient] = None
         self.db: Optional[Database] = None
-        self.connection_string = os.getenv('MONGODB_URI', 'mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main')
+        self.connection_string = os.getenv('MONGODB_URI', "")
         
     def connect(self) -> Database:
         """Establish connection to MongoDB"""
         try:
+            if not self.connection_string:
+                raise ValueError("MONGODB_URI environment variable is required")
             self.client = MongoClient(self.connection_string)
             self.db = self.client.main  # Using 'main' database
             logger.info("Successfully connected to MongoDB")

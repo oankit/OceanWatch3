@@ -92,9 +92,11 @@ npm install
 Create a `.env` file in the `server` directory:
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
-MONGODB_URI=mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster-host>/<database>
 MONGODB_DB=main
 ```
+
+Set `MONGODB_URI` in the frontend server environment as well (`client/.env.local` for local development). Replace the placeholders with your own database credentials; never commit environment files.
 
 ### 4. Start the Platform
 
@@ -149,7 +151,7 @@ npm run dev
 |----------|-------------|---------|
 | `OPENAI_API_KEY` | Your OpenAI API key | Required |
 | `OPENAI_MODEL` | OpenAI model to use | `gpt-4` |
-| `MONGODB_URI` | MongoDB connection string | Pre-configured |
+| `MONGODB_URI` | MongoDB connection string | Required |
 | `MONITORING_INTERVAL_SECONDS` | Monitoring frequency | `300` |
 | `ALERT_SEVERITY_THRESHOLD` | Risk threshold for alerts | `0.5` |
 

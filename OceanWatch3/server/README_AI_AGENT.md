@@ -23,7 +23,7 @@ pip install -r requirements.txt
 Create a `.env` file in the server directory:
 ```env
 OPENAI_API_KEY=your_openai_api_key_here
-MONGODB_URI=mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster-host>/<database>
 MONGODB_DB=main
 GFW_API_KEY=your_gfw_api_key_here
 PERPLEXITY_API_KEY=your_perplexity_api_key_here
@@ -109,7 +109,7 @@ The agent can be configured through environment variables:
 | `OPENAI_API_KEY` | Required | Your OpenAI API key |
 | `OPENAI_MODEL` | `gpt-4` | OpenAI model to use |
 | `OPENAI_TEMPERATURE` | `0.1` | Model temperature |
-| `MONGODB_URI` | Pre-configured | MongoDB connection string |
+| `MONGODB_URI` | Required | MongoDB connection string |
 | `MONGODB_DB` | `main` | Database name |
 | `MONITORING_INTERVAL_SECONDS` | `300` | Monitoring interval |
 | `ALERT_SEVERITY_THRESHOLD` | `0.5` | Risk threshold for alerts |

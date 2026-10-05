@@ -2,7 +2,11 @@ const { MongoClient } = require('mongodb');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
 
-const MONGODB_URI = 'mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main';
+function requireMongoUri() {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error("MONGODB_URI environment variable is required");
+  return uri;
+}
 const DB_NAME = 'main';
 
 class WindBorneClient {
@@ -79,7 +83,7 @@ async function updateVesselPositions() {
   let client;
   try {
     console.log('Connecting to MongoDB...');
-    client = new MongoClient(MONGODB_URI);
+    client = new MongoClient(requireMongoUri());
     await client.connect();
     const db = client.db(DB_NAME);
     const shipsCol = db.collection('vessel');

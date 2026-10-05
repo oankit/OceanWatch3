@@ -1,7 +1,11 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { MongoClient } from 'mongodb';
 
-const MONGODB_URI = "mongodb+srv://johnliu:pword@neptune-main.2w2qohn.mongodb.net/main";
+function requireMongoUri() {
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error("MONGODB_URI environment variable is required");
+  return uri;
+}
 const DB_NAME = "main";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -10,7 +14,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const client = new MongoClient(MONGODB_URI);
+    const client = new MongoClient(requireMongoUri());
     await client.connect();
     const db = client.db(DB_NAME);
     const alertsCollection = db.collection('ship_alerts');

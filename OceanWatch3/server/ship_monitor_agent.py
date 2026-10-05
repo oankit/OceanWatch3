@@ -25,7 +25,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # MongoDB Configuration
-MONGODB_URI = "mongodb+srv://johnliu:pword@OceanWatch-main.2w2qohn.mongodb.net/main"
+MONGODB_URI = os.getenv("MONGODB_URI", "")
+if not MONGODB_URI:
+    raise ValueError("MONGODB_URI environment variable is required")
 DB_NAME = "main"
 
 # OpenAI Configuration
