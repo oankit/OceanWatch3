@@ -21,8 +21,7 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
-# Expand CORS to include common dev ports
+# Add CORS middleware: local dev ports plus any deployed origins listed in CORS_ORIGINS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -30,6 +29,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3001",
+        *[o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()],
     ],
     allow_credentials=True,
     allow_methods=["*"],

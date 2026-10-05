@@ -6,8 +6,8 @@ requests
 pydantic
 alive-progress
 openai
-langchain
-langchain-openai
+langchain>=1.0
+langchain-openai>=1.0
 python-dotenv
 schedule
 tenacity

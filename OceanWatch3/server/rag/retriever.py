@@ -11,13 +11,44 @@ class MaritimeRetriever:
         self.max_results = max_results
         self.db = mongodb_connection
         self.embedding_service = embedding_service
+        self._index = None
+        self._index_loaded_at = 0.0
     
+    def _load_index(self):
+        """Load the precomputed rag_documents embeddings (built by build_rag_index.py), cached briefly."""
+        import time
+        import numpy as np
+        if self._index is not None and time.time() - self._index_loaded_at < 300:
+            return self._index
+        database = self.db.db if self.db.db is not None else self.db.connect()
+        docs = list(database['rag_documents'].find({}, {'_id': 0}))
+        if docs:
+            matrix = np.array([d.pop('embedding') for d in docs], dtype=np.float32)
+            matrix /= np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-12
+            self._index = (docs, matrix)
+        else:
+            self._index = None
+        self._index_loaded_at = time.time()
+        return self._index
+
     def retrieve_relevant_documents(self, query: str, context: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Retrieve relevant documents for a given query"""
         try:
             # Get query embedding
             query_embedding = self.embedding_service.create_query_embedding(query)
-            
+
+            # Semantic search over the precomputed index: one embedding call per query
+            index = self._load_index()
+            if index:
+                import numpy as np
+                docs, matrix = index
+                q = np.array(query_embedding, dtype=np.float32)
+                scores = matrix @ (q / (np.linalg.norm(q) + 1e-12))
+                ranked = [{**docs[i], 'similarity_score': float(scores[i])} for i in np.argsort(-scores)]
+                if context:
+                    ranked = self._apply_context_filtering(ranked, context) or ranked
+                return ranked[:self.max_results]
+
             # Get documents from database
             documents = self.db.get_maritime_data(query, limit=50)
             

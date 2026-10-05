@@ -1,52 +1,56 @@
+"""OceanWatch ship monitor agent.
+
+An LLM agent (LangChain + OpenAI) that investigates vessels using Global Fishing Watch
+event data in MongoDB and raises alerts with its reasoning and evidence.
+
+Usage:
+    python ship_monitor_agent.py                 # one scan over the riskiest vessels
+    python ship_monitor_agent.py --max-ships 10  # smaller scan
+    python ship_monitor_agent.py --watch 60      # rescan every 60 minutes
+
+Reads MONGODB_URI, MONGODB_DB, OPENAI_API_KEY and optionally OPENAI_MODEL and
+PERPLEXITY_API_KEY (enables the maritime news tool).
+"""
+import argparse
+import hashlib
+import json
 import os
-import asyncio
-import schedule
 import time
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Any, Optional, Tuple
-from dataclasses import dataclass
 from enum import Enum
-import json
+from typing import Any, Dict, List, Optional
 
-import openai
 import requests
-from pydantic import BaseModel, Field
-from pymongo import MongoClient
-from pymongo.collection import Collection
-from pymongo.database import Database
-from langchain.agents import AgentExecutor, create_openai_tools_agent
-from langchain_openai import ChatOpenAI
-from langchain.schema import BaseMessage, HumanMessage, AIMessage
-from langchain.tools import BaseTool
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from dotenv import load_dotenv
+from langchain.agents import create_agent
+from langchain_core.tools import tool
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel, ConfigDict
+from pymongo import MongoClient
 
-# Load environment variables
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".env"))
 
-# MongoDB Configuration
 MONGODB_URI = os.getenv("MONGODB_URI", "")
 if not MONGODB_URI:
     raise ValueError("MONGODB_URI environment variable is required")
-DB_NAME = "main"
+DB_NAME = os.getenv("MONGODB_DB", "main")
 
-# OpenAI Configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-6-luna")
 
-openai.api_key = OPENAI_API_KEY
-
-# Perplexity Configuration
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
-if not PERPLEXITY_API_KEY:
-    raise ValueError("PERPLEXITY_API_KEY environment variable is required")
+
+db = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=10000)[DB_NAME]
+
 
 class AlertSeverity(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
+
 
 class AlertType(str, Enum):
     LOITERING = "loitering"
@@ -57,534 +61,253 @@ class AlertType(str, Enum):
     ENCOUNTER = "encounter"
     GAP_IN_TRACKING = "gap_in_tracking"
 
-class ShipLocation(BaseModel):
+
+class AlertLocation(BaseModel):
     latitude: float
     longitude: float
-    timestamp: datetime
-    speed: Optional[float] = None
-    heading: Optional[float] = None
 
-class ShipEvent(BaseModel):
-    event_id: str
-    event_type: str
-    timestamp: datetime
-    location: Optional[ShipLocation] = None
-    details: Dict[str, Any] = {}
-    dataset: str
-
-class Ship(BaseModel):
-    vessel_id: str
-    name: Optional[str] = None
-    mmsi: Optional[str] = None
-    imo: Optional[str] = None
-    flag: Optional[str] = None
-    vessel_type: Optional[str] = None
-    last_known_location: Optional[ShipLocation] = None
-    events: List[ShipEvent] = []
-    risk_score: float = 0.0
 
 class Alert(BaseModel):
+    model_config = ConfigDict(use_enum_values=True)
+
     alert_id: str
-    timestamp: datetime
+    timestamp: datetime  # when the suspicious activity happened
+    detected_at: datetime  # when the agent raised the alert
     ship_id: str
     ship_name: Optional[str] = None
     alert_type: AlertType
     severity: AlertSeverity
-    location: Optional[ShipLocation] = None
+    location: Optional[AlertLocation] = None
     description: str
     reasoning: str
     evidence: List[str] = []
+    event_id: Optional[str] = None
+    model: str = OPENAI_MODEL
     status: str = "active"
 
-class BehaviorPattern(BaseModel):
-    pattern_type: str
-    description: str
-    confidence: float
-    evidence: List[str] = []
 
-class ShipBehaviorAnalysis(BaseModel):
-    ship_id: str
-    ship_name: Optional[str] = None
-    analysis_timestamp: datetime
-    patterns: List[BehaviorPattern] = []
-    risk_factors: List[str] = []
-    overall_risk_score: float = 0.0
-    recommendations: List[str] = []
-
-class MongoDBTool(BaseTool):
-    name: str = "mongodb_query"
-    description: str = "Query MongoDB for ship data, events, and behavior patterns"
-    db: Database = Field(exclude=True)
-    
-    def __init__(self, db: Database, **kwargs):
-        super().__init__(db=db, **kwargs)
-    
-    def _run(self, query_type: str, **kwargs) -> str:
-        """Execute MongoDB queries for ship monitoring"""
+def _parse_time(value: Any) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
         try:
-            if query_type == "get_ships":
-                return self._get_ships(**kwargs)
-            elif query_type == "get_ship_events":
-                return self._get_ship_events(**kwargs)
-            elif query_type == "get_recent_events":
-                return self._get_recent_events(**kwargs)
-            elif query_type == "get_loitering_events":
-                return self._get_loitering_events(**kwargs)
-            elif query_type == "get_port_visits":
-                return self._get_port_visits(**kwargs)
-            elif query_type == "get_encounters":
-                return self._get_encounters(**kwargs)
-            else:
-                return f"Unknown query type: {query_type}"
-        except Exception as e:
-            return f"Error executing query: {str(e)}"
-    
-    def _get_ships(self, limit: int = 100, **kwargs) -> str:
-        """Get ships from database"""
-        ships_collection = self.db.gfw_ships
-        ships = list(ships_collection.find({}, limit=limit))
-        return f"Found {len(ships)} ships: {ships[:5]}"  # Return first 5 for brevity
-    
-    def _get_ship_events(self, vessel_id: str, days: int = 30, **kwargs) -> str:
-        """Get events for a specific ship"""
-        events_collection = self.db.gfw_ship_events
-        start_date = datetime.now(timezone.utc) - timedelta(days=days)
-        
-        events = list(events_collection.find({
-            "vessel_id": vessel_id,
-            "timestamp": {"$gte": start_date}
-        }).sort("timestamp", -1))
-        
-        return f"Found {len(events)} events for vessel {vessel_id}"
-    
-    def _get_recent_events(self, hours: int = 24, **kwargs) -> str:
-        """Get recent events across all ships"""
-        events_collection = self.db.gfw_ship_events
-        start_date = datetime.now(timezone.utc) - timedelta(hours=hours)
-        
-        events = list(events_collection.find({
-            "timestamp": {"$gte": start_date}
-        }).sort("timestamp", -1).limit(100))
-        
-        return f"Found {len(events)} recent events in the last {hours} hours"
-    
-    def _get_loitering_events(self, days: int = 7, **kwargs) -> str:
-        """Get loitering events"""
-        events_collection = self.db.gfw_ship_events
-        
-        start_date = datetime.now(timezone.utc) - timedelta(days=days)
-        loitering_events = list(events_collection.find({
-            "_datasetId": "public-global-loitering-events:latest",
-            "timestamp": {"$gte": start_date}
-        }).sort("timestamp", -1))
-        
-        return f"Found {len(loitering_events)} loitering events in the last {days} days"
-    
-    def _get_port_visits(self, days: int = 7, **kwargs) -> str:
-        """Get port visit events"""
-        events_collection = self.db.gfw_ship_events
-        
-        start_date = datetime.now(timezone.utc) - timedelta(days=days)
-        port_events = list(events_collection.find({
-            "_datasetId": "public-global-port-visits-events:latest",
-            "timestamp": {"$gte": start_date}
-        }).sort("timestamp", -1))
-        
-        return f"Found {len(port_events)} port visit events in the last {days} days"
-    
-    def _get_encounters(self, days: int = 7, **kwargs) -> str:
-        """Get ship encounter events"""
-        events_collection = self.db.gfw_ship_events
-        
-        start_date = datetime.now(timezone.utc) - timedelta(days=days)
-        encounter_events = list(events_collection.find({
-            "_datasetId": "public-global-encounters-events:latest",
-            "timestamp": {"$gte": start_date}
-        }).sort("timestamp", -1))
-        
-        return f"Found {len(encounter_events)} encounter events in the last {days} days"
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return None
 
-class AlertGeneratorTool(BaseTool):
-    name: str = "generate_alert"
-    description: str = "Generate alerts for suspicious ship behavior"
-    db: Database = Field(exclude=True)
-    
-    def __init__(self, db: Database, **kwargs):
-        super().__init__(db=db, **kwargs)
-    
-    def _run(self, ship_id: str, alert_type: str, severity: str, description: str, reasoning: str, **kwargs) -> str:
-        """Generate and store an alert"""
-        try:
-            alert = Alert(
-                alert_id=f"alert_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{ship_id}",
-                timestamp=datetime.now(timezone.utc),
-                ship_id=ship_id,
-                ship_name=kwargs.get("ship_name"),
-                alert_type=AlertType(alert_type),
-                severity=AlertSeverity(severity),
-                location=kwargs.get("location"),
-                description=description,
-                reasoning=reasoning,
-                evidence=kwargs.get("evidence", [])
-            )
-            
-            # Store alert in MongoDB
-            alerts_collection = self.db.ship_alerts
-            alerts_collection.insert_one(alert.model_dump())
-            
-            return f"Alert generated successfully: {alert.alert_id}"
-        except Exception as e:
-            return f"Error generating alert: {str(e)}"
 
-class BehaviorAnalyzerTool(BaseTool):
-    name: str = "analyze_behavior"
-    description: str = "Analyze ship behavior patterns and calculate risk scores"
-    db: Database = Field(exclude=True)
-    
-    def __init__(self, db: Database, **kwargs):
-        super().__init__(db=db, **kwargs)
-    
-    def _run(self, ship_id: str, **kwargs) -> str:
-        """Analyze behavior patterns for a specific ship"""
-        try:
-            # Get ship events
-            events_collection = self.db.gfw_ship_events
-            ships_collection = self.db.gfw_ships
-            
-            # Get ship info
-            ship_info = ships_collection.find_one({"vessel_id": ship_id})
-            ship_name = ship_info.get("name") if ship_info else None
-            
-            # Get recent events
-            start_date = datetime.now(timezone.utc) - timedelta(days=30)
-            events = list(events_collection.find({
-                "vessel_id": ship_id,
-                "timestamp": {"$gte": start_date}
-            }).sort("timestamp", -1))
-            
-            # Analyze patterns
-            patterns = []
-            risk_factors = []
-            risk_score = 0.0
-            
-            # Check for loitering
-            loitering_events = [e for e in events if e.get("_datasetId") == "public-global-loitering-events:latest"]
-            if loitering_events:
-                patterns.append(BehaviorPattern(
-                    pattern_type="loitering",
-                    description=f"Ship has {len(loitering_events)} loitering events",
-                    confidence=0.8,
-                    evidence=[f"Loitering event at {e.get('timestamp')}" for e in loitering_events[:3]]
-                ))
-                risk_score += 0.3
-            
-            # Check for encounters
-            encounter_events = [e for e in events if e.get("_datasetId") == "public-global-encounters-events:latest"]
-            if encounter_events:
-                patterns.append(BehaviorPattern(
-                    pattern_type="encounters",
-                    description=f"Ship has {len(encounter_events)} encounter events",
-                    confidence=0.7,
-                    evidence=[f"Encounter with {e.get('vessel_id_2', 'unknown')} at {e.get('timestamp')}" for e in encounter_events[:3]]
-                ))
-                risk_score += 0.2
-            
-            # Check for port visits
-            port_events = [e for e in events if e.get("_datasetId") == "public-global-port-visits-events:latest"]
-            if port_events:
-                patterns.append(BehaviorPattern(
-                    pattern_type="port_visits",
-                    description=f"Ship has {len(port_events)} port visit events",
-                    confidence=0.9,
-                    evidence=[f"Port visit at {e.get('port_name', 'unknown')} at {e.get('timestamp')}" for e in port_events[:3]]
-                ))
-            
-            # Store analysis
-            analysis = ShipBehaviorAnalysis(
-                ship_id=ship_id,
-                ship_name=ship_name,
-                analysis_timestamp=datetime.now(timezone.utc),
-                patterns=patterns,
-                risk_factors=risk_factors,
-                overall_risk_score=min(risk_score, 1.0),
-                recommendations=["Monitor closely" if risk_score > 0.5 else "Continue normal monitoring"]
-            )
-            
-            # Store in MongoDB
-            analysis_collection = self.db.ship_behavior_analysis
-            analysis_collection.insert_one(analysis.model_dump())
-            
-            return f"Behavior analysis completed for {ship_id}. Risk score: {risk_score:.2f}"
-        except Exception as e:
-            return f"Error analyzing behavior: {str(e)}"
+def _compact_event(e: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep the fields that matter for judging behaviour, so tool output stays small."""
+    regions = e.get("regions") or {}
+    start, end = _parse_time(e.get("start")), _parse_time(e.get("end"))
+    out: Dict[str, Any] = {
+        "event_id": e.get("id"),
+        "type": e.get("type"),
+        "start": start.isoformat() if start else None,
+        "end": end.isoformat() if end else None,
+        "duration_hours": round((end - start).total_seconds() / 3600, 1) if start and end else None,
+        "lat": (e.get("position") or {}).get("lat"),
+        "lon": (e.get("position") or {}).get("lon"),
+        "in_no_take_mpa": bool(regions.get("mpaNoTake") or regions.get("mpaNoTakePartial")),
+        "in_mpa": bool(regions.get("mpa")),
+        "high_seas": bool(regions.get("highSeas")),
+        "eez": regions.get("eez"),
+        "rfmo": regions.get("rfmo"),
+        "distance_from_shore_km": (e.get("distances") or {}).get("startDistanceFromShoreKm"),
+    }
+    if e.get("encounter"):
+        enc = e["encounter"]
+        other = enc.get("vessel") or {}
+        out["encounter"] = {
+            "other_vessel": other.get("name") or other.get("id"),
+            "other_flag": other.get("flag"),
+            "other_type": other.get("type"),
+            "median_speed_knots": enc.get("medianSpeedKnots"),
+        }
+    if e.get("gap"):
+        gap = e["gap"]
+        out["gap"] = {
+            "hours": gap.get("durationHours"),
+            "distance_km": gap.get("distanceKm"),
+            "implied_speed_knots": gap.get("impliedSpeedKnots"),
+            "intentional_disabling": gap.get("intentionalDisabling"),
+        }
+    if e.get("loitering"):
+        loit = e["loitering"]
+        out["loitering"] = {"hours": loit.get("totalTimeHours"), "avg_speed_knots": loit.get("averageSpeedKnots")}
+    if e.get("port_visit"):
+        anchorage = (e["port_visit"].get("startAnchorage") or {})
+        out["port"] = {"name": anchorage.get("name"), "flag": anchorage.get("flag")}
+    return {k: v for k, v in out.items() if v not in (None, [], {})}
 
-class MaritimeNewsTool(BaseTool):
-    name: str = "maritime_news_search"
-    description: str = "Search for recent maritime news and updates using Perplexity AI. Useful for getting current information about shipping incidents, port conditions, maritime regulations, and industry developments."
-    
-    def _run(self, query: str, **kwargs) -> str:
-        """Search for maritime news using Perplexity API"""
-        try:
-            headers = {
-                "Authorization": f"Bearer {PERPLEXITY_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            
-            # Enhance the query with maritime-specific context
-            enhanced_query = f"maritime shipping ocean {query} latest news updates"
-            
-            payload = {
+
+@tool
+def get_vessel_profile(vessel_id: str) -> str:
+    """Get a vessel's identity (name, flag, type, MMSI), its last known position and its
+    summary risk counters (AIS gaps, events in no-take MPAs, unauthorised RFMO fishing)."""
+    v = db.vessel.find_one({"vessel_id": vessel_id}, {"_id": 0, "events_counts_by_dataset": 0})
+    if not v:
+        return json.dumps({"error": f"vessel {vessel_id} not found"})
+    return json.dumps(v, default=str)
+
+
+@tool
+def get_vessel_events(vessel_id: str, days: int = 365, event_type: Optional[str] = None, limit: int = 40) -> str:
+    """List a vessel's most recent events, newest first. event_type can be one of
+    'gap' (AIS transponder off), 'loitering', 'encounter' (meeting another vessel at sea)
+    or 'port_visit'. Each event includes position, duration and region context such as
+    whether it was inside a no-take marine protected area or on the high seas."""
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    query: Dict[str, Any] = {"vessel_id": vessel_id}
+    if event_type:
+        query["type"] = event_type
+    events = [e for e in db.gfw_ship_events.find(query, {"_id": 0}) if (_parse_time(e.get("start")) or since) >= since]
+    events.sort(key=lambda e: e.get("start") or "", reverse=True)
+    counts: Dict[str, int] = {}
+    for e in events:
+        counts[e.get("type", "unknown")] = counts.get(e.get("type", "unknown"), 0) + 1
+    return json.dumps({"total": len(events), "counts_by_type": counts,
+                       "events": [_compact_event(e) for e in events[:min(limit, 60)]]}, default=str)
+
+
+@tool
+def create_alert(vessel_id: str, alert_type: AlertType, severity: AlertSeverity, description: str,
+                 reasoning: str, evidence: List[str], event_id: Optional[str] = None) -> str:
+    """Raise an alert for suspicious behaviour. Link it to the event_id it is mainly about
+    so it is placed at that event's time and position. Only raise alerts the evidence
+    supports; reasoning should explain why the behaviour is suspicious, not just restate it."""
+    vessel = db.vessel.find_one({"vessel_id": vessel_id}, {"name": 1, "lat": 1, "lon": 1})
+    if not vessel:
+        return f"Error: vessel {vessel_id} not found"
+    event = db.gfw_ship_events.find_one({"vessel_id": vessel_id, "id": event_id}) if event_id else None
+    when = (_parse_time(event.get("end")) or _parse_time(event.get("start"))) if event else None
+    position = (event or {}).get("position") or {}
+    lat, lon = position.get("lat", vessel.get("lat")), position.get("lon", vessel.get("lon"))
+
+    # Deterministic id so re-running a scan updates an alert instead of duplicating it
+    alert_id = "alert_" + hashlib.sha1(f"{vessel_id}:{event_id}:{AlertType(alert_type).value}".encode()).hexdigest()[:16]
+    alert = Alert(
+        alert_id=alert_id,
+        timestamp=when or datetime.now(timezone.utc),
+        detected_at=datetime.now(timezone.utc),
+        ship_id=vessel_id,
+        ship_name=vessel.get("name"),
+        alert_type=alert_type,
+        severity=severity,
+        location=AlertLocation(latitude=lat, longitude=lon) if lat is not None and lon is not None else None,
+        description=description,
+        reasoning=reasoning,
+        evidence=evidence,
+        event_id=event_id,
+    )
+    db.ship_alerts.replace_one({"alert_id": alert_id}, alert.model_dump(mode="python"), upsert=True)
+    return f"Alert {alert_id} saved ({AlertSeverity(severity).value} {AlertType(alert_type).value})"
+
+
+@tool
+def maritime_news_search(query: str) -> str:
+    """Search recent maritime news (via Perplexity) for context on a vessel, region or incident."""
+    try:
+        response = requests.post(
+            "https://api.perplexity.ai/chat/completions",
+            headers={"Authorization": f"Bearer {PERPLEXITY_API_KEY}", "Content-Type": "application/json"},
+            json={
                 "model": "sonar",
                 "messages": [
-                    {
-                        "role": "system",
-                        "content": "You are a maritime intelligence assistant. Provide concise, factual information about maritime news, shipping incidents, port conditions, and industry developments. Focus on recent events and their potential impact on maritime operations."
-                    },
-                    {
-                        "role": "user",
-                        "content": enhanced_query
-                    }
+                    {"role": "system", "content": "You are a maritime intelligence assistant. Give concise, factual, sourced answers."},
+                    {"role": "user", "content": f"maritime shipping {query} latest news"},
                 ],
-                "search_domain_filter": ["maritime-executive.com", "tradewindsnews.com", "lloydslist.com", "seatrade-maritime.com", "marinelink.com"],
+                "search_domain_filter": ["maritime-executive.com", "tradewindsnews.com", "lloydslist.com",
+                                         "seatrade-maritime.com", "marinelink.com"],
                 "search_recency_filter": "month",
-                "return_citations": True,
-                "return_images": False,
-                "max_tokens": 1000
-            }
-            
-            response = requests.post(
-                "https://api.perplexity.ai/chat/completions",
-                headers=headers,
-                json=payload,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
-                
-                # Extract citations if available
-                citations = []
-                if "citations" in result:
-                    citations = result["citations"]
-                elif "search_results" in result:
-                    citations = [item.get("url", "") for item in result["search_results"]]
-                
-                return json.dumps({
-                    "status": "success",
-                    "query": query,
-                    "content": content,
-                    "citations": citations,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }, indent=2)
-            else:
-                return json.dumps({
-                    "status": "error",
-                    "message": f"API request failed with status {response.status_code}",
-                    "details": response.text
-                }, indent=2)
-                
-        except requests.exceptions.Timeout:
-            return json.dumps({
-                "status": "error",
-                "message": "Request timed out",
-                "details": "The Perplexity API request took too long to respond"
-            }, indent=2)
-        except requests.exceptions.RequestException as e:
-            return json.dumps({
-                "status": "error",
-                "message": "Network error occurred",
-                "details": str(e)
-            }, indent=2)
+                "max_tokens": 800,
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        result = response.json()
+        return json.dumps({"content": result["choices"][0]["message"]["content"],
+                           "citations": result.get("citations", [])})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+SYSTEM_PROMPT = """You are OceanWatch, a maritime intelligence analyst investigating vessels for illegal,
+unreported and unregulated (IUU) fishing and other suspicious behaviour, using Global Fishing Watch data.
+
+For the vessel you are given:
+1. Call get_vessel_profile, then get_vessel_events to review its activity.
+2. Look for genuinely suspicious patterns, for example:
+   - AIS gaps (transponder off), especially long ones, ones flagged as likely intentional,
+     or ones near protected areas or other vessels
+   - Fishing or loitering inside no-take marine protected areas
+   - Encounters at sea with other vessels (possible transshipment), especially on the high seas
+     or with reefers/carriers
+   - Loitering far from shore, or behaviour inconsistent with the vessel's stated type
+3. Weigh context: vessel type and flag, location, duration, how often it repeats. Routine port
+   visits by ferries or cargo ships are normal and should not be alerted.
+4. For each distinct concern the evidence supports, call create_alert once, linked to the most
+   representative event_id. Map concerns to alert types: AIS gaps -> gap_in_tracking,
+   loitering -> loitering, at-sea meetings -> encounter, activity inside protected areas or
+   illogical movements -> suspicious_route, unusual port behaviour -> port_entry or port_exit.
+   Severity: critical only for strong, repeated evidence of likely illegal activity; high for
+   clear risk; medium for notable but ambiguous; low for minor anomalies.
+5. If nothing is suspicious, raise no alerts.
+
+Finish with a two-sentence assessment of the vessel."""
+
+
+def build_agent():
+    llm = ChatOpenAI(model=OPENAI_MODEL, api_key=OPENAI_API_KEY, use_responses_api=True)
+    tools = [get_vessel_profile, get_vessel_events, create_alert]
+    if PERPLEXITY_API_KEY:
+        tools.append(maritime_news_search)
+    return create_agent(llm, tools, system_prompt=SYSTEM_PROMPT)
+
+
+def pick_candidates(max_ships: int) -> List[Dict[str, Any]]:
+    """Vessels worth an LLM's attention: risk counters first, then the most at-sea activity."""
+    at_sea = {r["_id"]: r["n"] for r in db.gfw_ship_events.aggregate([
+        {"$match": {"type": {"$in": ["gap", "encounter", "loitering"]}}},
+        {"$group": {"_id": "$vessel_id", "n": {"$sum": 1}}},
+    ])}
+    vessels = list(db.vessel.find({"noEvents": False}, {"_id": 0, "vessel_id": 1, "name": 1, "aisOff_count": 1,
+                                                         "eventsInNoTakeMpas_count": 1,
+                                                         "eventsInRfmoWithoutKnownAuthorization_count": 1}))
+    for v in vessels:
+        v["risk"] = sum(v.get(k) or 0 for k in ("aisOff_count", "eventsInNoTakeMpas_count",
+                                                 "eventsInRfmoWithoutKnownAuthorization_count"))
+        v["at_sea"] = at_sea.get(v["vessel_id"], 0)
+    vessels = [v for v in vessels if v["risk"] or v["at_sea"]]
+    vessels.sort(key=lambda v: (v["risk"], v["at_sea"]), reverse=True)
+    return vessels[:max_ships]
+
+
+def scan(max_ships: int) -> None:
+    agent = build_agent()
+    candidates = pick_candidates(max_ships)
+    print(f"OceanWatch agent ({OPENAI_MODEL}) scanning {len(candidates)} vessels in '{DB_NAME}'")
+    before = db.ship_alerts.count_documents({})
+    for i, v in enumerate(candidates, 1):
+        started = time.time()
+        try:
+            result = agent.invoke({"messages": [{"role": "user", "content": f"Investigate vessel {v['vessel_id']} ({v.get('name')})."}]})
+            final = result["messages"][-1]
+            summary = final.text if hasattr(final, "text") else str(final.content)
+            print(f"[{i}/{len(candidates)}] {v.get('name')} ({time.time() - started:.0f}s): {' '.join(str(summary).split())[:220]}")
         except Exception as e:
-            return json.dumps({
-                "status": "error",
-                "message": "Unexpected error occurred",
-                "details": str(e)
-            }, indent=2)
+            print(f"[{i}/{len(candidates)}] {v.get('name')}: error {type(e).__name__}: {e}")
+    print(f"Done. Alerts in database: {before} -> {db.ship_alerts.count_documents({})}")
 
-class ShipMonitorAgent:
-    def __init__(self):
-        self.client = MongoClient(MONGODB_URI)
-        self.db = self.client[DB_NAME]
-        self.llm = ChatOpenAI(
-            model="gpt-4",
-            temperature=0.1,
-            openai_api_key=OPENAI_API_KEY
-        )
-        
-        # Initialize tools
-        self.mongodb_tool = MongoDBTool(self.db)
-        self.alert_tool = AlertGeneratorTool(self.db)
-        self.behavior_tool = BehaviorAnalyzerTool(self.db)
-        self.maritime_news_tool = MaritimeNewsTool()
-        
-        self.tools = [self.mongodb_tool, self.alert_tool, self.behavior_tool, self.maritime_news_tool]
-        
-        # Create agent
-        self.agent = self._create_agent()
-        self.agent_executor = AgentExecutor(
-            agent=self.agent,
-            tools=self.tools,
-            verbose=True,
-            handle_parsing_errors=True
-        )
-    
-    def _create_agent(self):
-        """Create the AI agent with monitoring capabilities"""
-        system_prompt = """You are OceanWatch, an AI maritime intelligence agent specialized in monitoring ship behavior patterns and detecting suspicious activities.
-
-Your primary responsibilities:
-1. Monitor ship movements, port entries/exits, loitering behavior, and encounters
-2. Analyze behavior patterns to identify potential security risks
-3. Generate alerts for suspicious activities with detailed reasoning
-4. Continuously assess risk levels for vessels
-5. Search for current maritime news and industry developments to provide context
-
-Key monitoring areas:
-- Loitering in sensitive areas
-- Unusual port visits or extended stays
-- Suspicious encounters between vessels
-- Gaps in tracking data
-- Speed anomalies
-- Route deviations
-
-When analyzing behavior, consider:
-- Historical patterns
-- Geographic context
-- Vessel type and flag
-- Time patterns
-- Frequency of events
-- Current maritime news and incidents that might affect operations
-
-Generate alerts with:
-- Clear description of suspicious activity
-- Evidence and reasoning
-- Appropriate severity level
-- Specific location and timestamp
-- Recommended actions
-
-You can search for current maritime news using the maritime_news_search tool to:
-- Get updates on shipping incidents, port conditions, and maritime regulations
-- Provide context for unusual vessel behavior
-- Stay informed about industry developments that might affect ship operations
-- Gather intelligence on maritime security threats
-
-Always provide detailed reasoning for your assessments and recommendations."""
-
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
-        ])
-        
-        return create_openai_tools_agent(self.llm, self.tools, prompt)
-    
-    async def monitor_ships(self):
-        """Main monitoring loop"""
-        print("🚢 Starting OceanWatch Ship Monitor Agent...")
-        
-        while True:
-            try:
-                # Get recent events
-                recent_events = self.mongodb_tool._run("get_recent_events", hours=6)
-                
-                # Analyze behavior for ships with recent activity
-                ships = self.mongodb_tool._run("get_ships", limit=50)
-                
-                # Check for loitering events
-                loitering_events = self.mongodb_tool._run("get_loitering_events", days=1)
-                
-                # Check for encounters
-                encounter_events = self.mongodb_tool._run("get_encounters", days=1)
-                
-                # Generate monitoring report
-                monitoring_prompt = f"""
-                Analyze the following maritime data and identify any suspicious activities:
-                
-                Recent Events: {recent_events}
-                Ships: {ships}
-                Loitering Events: {loitering_events}
-                Encounter Events: {encounter_events}
-                
-                Please:
-                1. Identify any ships with suspicious behavior patterns
-                2. Analyze the risk level for each concerning vessel
-                3. Generate alerts for any suspicious activities
-                4. Provide recommendations for monitoring
-                
-                Focus on:
-                - Ships with multiple loitering events
-                - Unusual encounter patterns
-                - Vessels in sensitive areas
-                - Abnormal port visit patterns
-                """
-                
-                result = await self.agent_executor.ainvoke({
-                    "input": monitoring_prompt,
-                    "chat_history": []
-                })
-                
-                print(f"📊 Monitoring Report: {result['output']}")
-                
-                # Wait before next monitoring cycle
-                await asyncio.sleep(300)  # 5 minutes
-                
-            except Exception as e:
-                print(f"❌ Error in monitoring loop: {e}")
-                await asyncio.sleep(60)  # Wait 1 minute before retrying
-    
-    async def analyze_specific_ship(self, ship_id: str):
-        """Analyze behavior for a specific ship"""
-        prompt = f"""
-        Perform a detailed behavior analysis for ship {ship_id}.
-        
-        Please:
-        1. Retrieve all recent events for this vessel
-        2. Analyze behavior patterns and risk factors
-        3. Calculate a risk score
-        4. Generate alerts if suspicious activity is detected
-        5. Provide specific recommendations
-        
-        Use the available tools to gather data and perform analysis.
-        """
-        
-        result = await self.agent_executor.ainvoke({
-            "input": prompt,
-            "chat_history": []
-        })
-        
-        return result['output']
-    
-    async def generate_alert_for_ship(self, ship_id: str, alert_type: str, description: str, reasoning: str):
-        """Generate a specific alert for a ship"""
-        prompt = f"""
-        Generate an alert for ship {ship_id} with the following details:
-        - Alert Type: {alert_type}
-        - Description: {description}
-        - Reasoning: {reasoning}
-        
-        Please:
-        1. Assess the appropriate severity level
-        2. Gather current location data if available
-        3. Generate the alert using the alert tool
-        4. Provide additional context and recommendations
-        """
-        
-        result = await self.agent_executor.ainvoke({
-            "input": prompt,
-            "chat_history": []
-        })
-        
-        return result['output']
-
-# Main execution
-async def main():
-    agent = ShipMonitorAgent()
-    
-    # Start monitoring
-    await agent.monitor_ships()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="OceanWatch ship monitor agent")
+    parser.add_argument("--max-ships", type=int, default=25)
+    parser.add_argument("--watch", type=int, metavar="MINUTES", help="rescan on this interval instead of exiting")
+    args = parser.parse_args()
+    while True:
+        scan(args.max_ships)
+        if not args.watch:
+            break
+        time.sleep(args.watch * 60)

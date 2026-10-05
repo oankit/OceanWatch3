@@ -124,12 +124,17 @@ def main() -> None:
             app_event = {k: v for k, v in e.items() if k != "in_no_take_mpa"}
             event_ops.append(ReplaceOne({"vessel_id": e["vessel_id"], "id": e["id"]}, app_event, upsert=True))
 
-    db["vessel"].create_indexes([IndexModel([("vessel_id", ASCENDING)], unique=True, name="vessel_id_unique")])
-    db["events"].create_indexes([IndexModel([("vessel_id", ASCENDING), ("id", ASCENDING)], unique=True, name="vessel_event_unique")])
-    if vessel_ops:
-        db["vessel"].bulk_write(vessel_ops, ordered=False)
-    if event_ops:
-        db["events"].bulk_write(event_ops, ordered=False)
+    # Build into staging collections, then swap them in so the site never sees a half-built dataset
+    for name, ops, index in [
+        ("vessel", vessel_ops, IndexModel([("vessel_id", ASCENDING)], unique=True, name="vessel_id_unique")),
+        ("events", event_ops, IndexModel([("vessel_id", ASCENDING), ("id", ASCENDING)], unique=True, name="vessel_event_unique")),
+    ]:
+        staging = db[f"{name}_staging"]
+        staging.drop()
+        staging.create_indexes([index])
+        if ops:
+            staging.bulk_write(ops, ordered=False)
+        staging.rename(name, dropTarget=True)
 
     flagged = db["vessel"].count_documents({"$expr": {"$gt": [
         {"$add": ["$aisOff_count", "$eventsInNoTakeMpas_count", "$eventsInRfmoWithoutKnownAuthorization_count"]}, 0]}})

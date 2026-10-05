@@ -23,7 +23,7 @@ class MongoDBConnection:
             if not self.connection_string:
                 raise ValueError("MONGODB_URI environment variable is required")
             self.client = MongoClient(self.connection_string)
-            self.db = self.client.main  # Using 'main' database
+            self.db = self.client[os.getenv('MONGODB_DB', 'main')]
             logger.info("Successfully connected to MongoDB")
             return self.db
         except Exception as e:

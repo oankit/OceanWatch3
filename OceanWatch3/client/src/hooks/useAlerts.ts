@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { alertService, Alert, AlertStats } from '@/services/alertService';
 
+// Global Fishing Watch events arrive with a lag of days, so look back further than a live feed would
+const ALERT_WINDOW_HOURS = 24 * 90;
+
 export function useAlerts() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [stats, setStats] = useState<AlertStats | null>(null);
@@ -8,7 +11,7 @@ export function useAlerts() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
 
-  const fetchAlerts = useCallback(async (hours: number = 6) => {
+  const fetchAlerts = useCallback(async (hours: number = ALERT_WINDOW_HOURS) => {
     try {
       setLoading(true);
       const [alertsData, statsData] = await Promise.all([
@@ -26,7 +29,7 @@ export function useAlerts() {
     }
   }, []);
 
-  const fetchAlertsByShip = useCallback(async (ship_id: string, hours: number = 24) => {
+  const fetchAlertsByShip = useCallback(async (ship_id: string, hours: number = ALERT_WINDOW_HOURS) => {
     try {
       const shipAlerts = await alertService.getAlertsByShip(ship_id, hours);
       return shipAlerts;

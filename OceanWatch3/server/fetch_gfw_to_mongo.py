@@ -1,7 +1,7 @@
 import os
 import csv
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Any, Tuple, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from importlib.machinery import SourceFileLoader
@@ -196,8 +196,10 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--csv", default=os.path.join(os.path.dirname(__file__), "data/test-data/vessels.csv"))
-    parser.add_argument("--start-date", default="2023-01-01")
-    parser.add_argument("--end-date", default="2025-12-31")
+    # Default to the most recent 12 months so the data stays current
+    today = datetime.now(timezone.utc).date()
+    parser.add_argument("--start-date", default=(today - timedelta(days=365)).isoformat())
+    parser.add_argument("--end-date", default=today.isoformat())
     parser.add_argument("--datasets", nargs="+", default=["auto"], help="Use 'auto' to fetch across common event datasets.")
     parser.add_argument("--page-limit", type=int, default=200)
     parser.add_argument("--max-workers", type=int, default=8)

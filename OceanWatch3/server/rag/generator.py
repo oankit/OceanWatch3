@@ -16,7 +16,7 @@ class MaritimeResponseGenerator:
         if not api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
         self.client = openai.OpenAI(api_key=api_key)
-        self.model = "gpt-4-turbo-preview"  # Using GPT-4 for better reasoning
+        self.model = os.getenv("OPENAI_MODEL", "gpt-6-luna")
         
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def generate_response(self, query: str, context_documents: List[Dict[str, Any]], 
@@ -41,16 +41,15 @@ class MaritimeResponseGenerator:
             messages.append({"role": "user", "content": user_prompt})
             
             # Generate response
-            response = self.client.chat.completions.create(
+            # Responses API: reasoning models count hidden reasoning against the output budget
+            response = self.client.responses.create(
                 model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=1000,
-                stream=False
+                input=messages,
+                max_output_tokens=4000,
             )
             
             # Extract response content
-            response_content = response.choices[0].message.content
+            response_content = response.output_text
             
             # Extract sources from context documents
             sources = self._extract_sources(context_documents)
@@ -106,7 +105,7 @@ Always be precise with maritime terminology and provide actionable insights when
         # Format context documents
         context_text = "Relevant Maritime Data:\n\n"
         
-        for i, doc in enumerate(context_documents[:5], 1):  # Limit to top 5 documents
+        for i, doc in enumerate(context_documents[:8], 1):  # Limit to top 8 documents
             doc_type = doc.get('metadata', {}).get('document_type', 'unknown')
             content = doc.get('content', 'No content available')
             similarity = doc.get('similarity_score', 0)
@@ -194,15 +193,13 @@ Response: {response}
 
 Generate 3 specific, relevant follow-up questions that would help explore this topic further. Focus on maritime intelligence, vessel behavior, or security concerns."""
 
-            response = self.client.chat.completions.create(
+            response = self.client.responses.create(
                 model=self.model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
-                max_tokens=200,
-                stream=False
+                input=[{"role": "user", "content": prompt}],
+                max_output_tokens=1500,
             )
             
-            content = response.choices[0].message.content
+            content = response.output_text
             # Parse the response to extract questions
             questions = [q.strip() for q in content.split('\n') if q.strip() and '?' in q]
             return questions[:3]
