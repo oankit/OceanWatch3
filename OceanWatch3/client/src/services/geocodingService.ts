@@ -131,18 +131,16 @@ class GeocodingService extends Service {
         )();
     }
 
-    async getLandInfo(lat: number, lng: number) {
-        const requestConfig = this.applyHeaders({
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }, {});
-        
-        return this.safeAxiosApply<LandInfoResponse>(
-            async () => this.instance.get(`https://geoinfo-windborne.onrender.com/api/v1/land_info?lat=${lat}&lon=${lng}`, {
-                ...requestConfig,
-                withCredentials: false
-            })
-        )();
+    // Place name for a position via Mapbox reverse geocoding; open water has no match
+    async getLandInfo(lat: number, lng: number): Promise<{ name: string }> {
+        try {
+            const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+            const res = await fetch(`https://api.mapbox.com/search/geocode/v6/reverse?longitude=${lng}&latitude=${lat}&types=place,region,country&limit=1&access_token=${token}`);
+            const props = (await res.json())?.features?.[0]?.properties;
+            return { name: props ? (props.full_address || props.name) : 'At sea' };
+        } catch {
+            return { name: '' };
+        }
     }
 
     async getBatchLandInfo(coordinates: BatchCoordinate[]) {

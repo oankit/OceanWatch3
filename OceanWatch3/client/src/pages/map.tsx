@@ -344,7 +344,16 @@ export default function Map() {
       style: 'mapbox://styles/omarankit2001/cmebb1taj00r801pg7rj1h7a9',
       center: [-74.0060, 40.7128],
       zoom: 3,
+      // Flat 2D map: no globe, rotation or tilt
+      projection: 'mercator',
+      pitch: 0,
+      bearing: 0,
+      maxPitch: 0,
+      dragRotate: false,
+      pitchWithRotate: false,
+      touchPitch: false,
     });
+    map.touchZoomRotate.disableRotation();
 
     const onLoad = () => setMapReady(true);
     map.on('load', onLoad);
@@ -430,7 +439,7 @@ export default function Map() {
   return (
     <TooltipProvider>
       <div className="w-screen h-screen relative">
-        <div className="w-80 absolute left-6 inset-y-6 bg-zinc-400/35 backdrop-blur-md rounded border border-zinc-500/50 text-zinc-50 z-20 flex flex-col">
+        <div className="w-80 absolute left-6 inset-y-6 bg-zinc-900/75 backdrop-blur-md rounded border border-zinc-700/60 text-zinc-50 z-20 flex flex-col">
           <nav className="w-full p-4 border-b border-zinc-700/50">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -503,7 +512,7 @@ export default function Map() {
               {selected && (
                 <motion.aside
                   key={selected.id}
-                  className="absolute top-6 right-6 rounded border border-zinc-500/50 h-auto w-80 bg-zinc-400/35 backdrop-blur-md p-4 text-zinc-50 z-30"
+                  className="absolute top-6 right-6 rounded border border-zinc-700/60 h-auto w-80 bg-zinc-900/75 backdrop-blur-md p-4 text-zinc-50 z-30"
                   initial={{ x: "100%", opacity: 0 }}
                   animate={{ x: 0, opacity: 1 }}
                   exit={{ x: "100%", opacity: 0 }}
