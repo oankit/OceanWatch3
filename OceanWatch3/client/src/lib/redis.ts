@@ -3,8 +3,11 @@ import { createClient, RedisClientType } from 'redis'
 let client: RedisClientType | null = null
 let connectPromise: Promise<void> | null = null
 
+// Redis is an optional cache. Without REDIS_URL, deployments skip caching entirely;
+// local dev keeps using the Redis started by `npm run redis:start`.
 function getRedisUrl(): string | null {
-  return 'redis://127.0.0.1:6379'
+  if (process.env.REDIS_URL) return process.env.REDIS_URL
+  return process.env.NODE_ENV === 'development' ? 'redis://127.0.0.1:6379' : null
 }
 
 async function ensureConnected(): Promise<RedisClientType> {
@@ -50,6 +53,7 @@ export const cacheKeys = {
 }
 
 export async function cacheGet<T = unknown>(key: string): Promise<T | null> {
+  if (!getRedisUrl()) return null
   try {
     const c = await ensureConnected()
     const raw = await c.get(key)
@@ -62,6 +66,7 @@ export async function cacheGet<T = unknown>(key: string): Promise<T | null> {
 }
 
 export async function cacheSet(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+  if (!getRedisUrl()) return
   try {
     const c = await ensureConnected()
     await c.set(key, JSON.stringify(value), { EX: ttlSeconds })
@@ -77,6 +82,7 @@ export async function cacheGetWithBackgroundRefresh<T>(
   ttlSeconds: number,
   staleSeconds: number = ttlSeconds / 2
 ): Promise<T> {
+  if (!getRedisUrl()) return await fetcher()
   try {
     const c = await ensureConnected()
     

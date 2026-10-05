@@ -11,10 +11,13 @@ if (require('fs').existsSync(parentEnvPath)) {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: false,
-  env: {
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY,
-    MONGODB_URI: process.env.MONGODB_URI,
-  },
+  // Next rejects undefined values here, so only forward the ones that are set
+  env: Object.fromEntries(
+    Object.entries({
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      MONGODB_URI: process.env.MONGODB_URI,
+    }).filter(([, value]) => value !== undefined)
+  ),
 }
 
 module.exports = nextConfig

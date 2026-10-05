@@ -25,7 +25,7 @@ import { Alert } from '@/services/alertService';
 import { ChatOverlay } from '@/components/chat/chat-overlay';
 import PortCallsSection from '@/components/PortCallsSection';
 
-mapboxgl.accessToken = 'pk.eyJ1Ijoia2FpbWFyc2hsYW5kIiwiYSI6ImNqb205dDhvczA0dDEzcm81Y2ljdnY0dWMifQ.HK_10izvkRBM8bQsXEc0PQ';
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || '';
 
 export default function Map() {
   const mapRef = useRef<MapboxMap | null>(null);
@@ -602,8 +602,8 @@ export default function Map() {
                         {/* Port Calls Section */}
                         {selected && (
                           <PortCallsSection
-                            vesselId={selected.imo || selected.mmsi || selected.id}
-                            vesselName={selected.shipname}
+                            vesselId={selected.vessel?.imo || selected.vessel?.mmsi || selected.id}
+                            vesselName={selected.vessel?.shipname || selected.name}
                           />
                         )}
                         <Button variant='default' className='opacity-70' size='sm'>

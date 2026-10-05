@@ -1,21 +1,5 @@
-import { MongoClient, Db } from 'mongodb'
+import { getDb } from './mongodb'
 import { cacheGetWithBackgroundRefresh, cacheKeys } from './redis'
-
-let cachedClient: MongoClient | null = null
-let cachedDb: Db | null = null
-
-async function getDb(): Promise<Db> {
-  if (cachedDb && cachedClient) return cachedDb
-
-  const uri = process.env.MONGODB_URI
-  if (!uri) throw new Error("MONGODB_URI environment variable is required")
-  const dbName = process.env.MONGODB_DB || 'main'
-
-  const client = await (cachedClient?.connect?.() ? Promise.resolve(cachedClient) : new MongoClient(uri).connect())
-  cachedClient = client
-  cachedDb = client.db(dbName)
-  return cachedDb
-}
 
 export interface CachedVessel {
   _id: any
@@ -35,8 +19,8 @@ export interface CachedVessel {
 // Fetch all vessels with smart caching and background refresh
 export async function getCachedVessels(): Promise<CachedVessel[]> {
   const cacheKey = cacheKeys.allVessels()
-  const ttlSeconds = 300000 // 5 minutes
-  const staleSeconds = 150000 // Refresh in background after 2.5 minutes
+  const ttlSeconds = 300 // 5 minutes
+  const staleSeconds = 150 // Refresh in background after 2.5 minutes
   
   return await cacheGetWithBackgroundRefresh(
     cacheKey,

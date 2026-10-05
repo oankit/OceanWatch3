@@ -64,7 +64,7 @@ export interface AllSuggestions {
 
 class ChatService extends Service {
   constructor() {
-    super("http://localhost:8001"); // RAG API server
+    super(process.env.NEXT_PUBLIC_RAG_SERVER_URL || "http://localhost:8001"); // RAG API server
   }
 
   async sendMessage(request: ChatRequest): Promise<ChatResponse> {

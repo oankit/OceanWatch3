@@ -1,23 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { MongoClient, Db } from 'mongodb'
+import { getDb } from '@/lib/mongodb'
 // import { cacheGet, cacheSet } from '@/lib/redis'
 import { VesselData } from '@/services/shipService'
-
-let cachedClient: MongoClient | null = null
-let cachedDb: Db | null = null
-
-async function getDb(): Promise<Db> {
-  if (cachedDb && cachedClient) return cachedDb
-
-  const uri = process.env.MONGODB_URI
-  if (!uri) throw new Error("MONGODB_URI environment variable is required")
-  const dbName = process.env.MONGODB_DB || 'main'
-
-  const client = await (cachedClient?.connect?.() ? Promise.resolve(cachedClient) : new MongoClient(uri).connect())
-  cachedClient = client
-  cachedDb = client.db(dbName)
-  return cachedDb
-}
 
 export type GetVesselDataResponse = { id: string; data?: VesselData }
 

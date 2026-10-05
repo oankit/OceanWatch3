@@ -3,6 +3,7 @@ import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
+import { getRagServerUrl, isRagServerHealthy } from '@/lib/rag';
 
 // Global variable to track server process
 declare global {
@@ -19,6 +20,27 @@ export default async function handler(
   }
 
   try {
+    // Only spawn the Python server for local development; a deployment can't run it
+    // in-process, so there we just report whether the separately hosted one is up.
+    const ragUrl = getRagServerUrl();
+    if (!ragUrl) {
+      return res.status(200).json({
+        success: false,
+        message: 'Chat assistant is not available in this deployment',
+        error: 'RAG_SERVER_NOT_CONFIGURED',
+        port: 8001
+      });
+    }
+    if (process.env.NEXT_PUBLIC_RAG_SERVER_URL) {
+      const healthy = await isRagServerHealthy(ragUrl, 5000);
+      return res.status(200).json({
+        success: healthy,
+        message: healthy ? 'RAG server is running' : 'RAG server is not reachable',
+        error: healthy ? undefined : 'RAG_SERVER_UNREACHABLE',
+        port: 8001
+      });
+    }
+
     // Load environment variables from root .env file
     const rootDir = path.join(process.cwd(), '..');
     const envPath = path.join(rootDir, '.env');

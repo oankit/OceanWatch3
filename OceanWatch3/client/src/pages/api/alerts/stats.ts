@@ -1,12 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { MongoClient } from 'mongodb';
-
-function requireMongoUri() {
-  const uri = process.env.MONGODB_URI;
-  if (!uri) throw new Error("MONGODB_URI environment variable is required");
-  return uri;
-}
-const DB_NAME = "main";
+import { getDb } from '@/lib/mongodb';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -14,9 +7,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const client = new MongoClient(requireMongoUri());
-    await client.connect();
-    const db = client.db(DB_NAME);
+    const db = await getDb();
     const alertsCollection = db.collection('ship_alerts');
 
     const { hours = 24 } = req.query;
@@ -79,8 +70,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       .sort({ timestamp: -1 })
       .limit(5)
       .toArray();
-
-    await client.close();
 
     res.status(200).json({
       data: {

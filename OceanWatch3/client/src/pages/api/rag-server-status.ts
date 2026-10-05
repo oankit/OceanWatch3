@@ -1,4 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
+import { getRagServerUrl, isRagServerHealthy } from '@/lib/rag';
 
 // Global variable to track server process (shared with start-rag-chatbot.ts)
 declare global {
@@ -15,22 +16,20 @@ export default async function handler(
   }
 
   try {
+    const ragUrl = getRagServerUrl();
+    if (!ragUrl) {
+      return res.status(200).json({
+        isRunning: false,
+        isStarting: false,
+        port: 8001,
+        error: 'Chat assistant is not available in this deployment'
+      });
+    }
+
     const procRunning = !!(global.ragServerProcess && !global.ragServerProcess.killed);
 
     // Always probe /health to reflect actual server state even if started externally
-    let healthOk = false;
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
-      const response = await fetch('http://localhost:8001/health', {
-        method: 'GET',
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      healthOk = response.ok;
-    } catch (error) {
-      healthOk = false;
-    }
+    const healthOk = await isRagServerHealthy(ragUrl);
 
     return res.status(200).json({
       isRunning: healthOk,
