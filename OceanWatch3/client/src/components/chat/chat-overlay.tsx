@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageCircle, X, Minimize2, Maximize2, Bot, Wifi, WifiOff } from 'lucide-react';
+import { MessageCircle, X, Minus, Minimize2, Maximize2, Bot, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useChat } from '@/hooks/useChat';
@@ -109,13 +109,13 @@ export function ChatOverlay({ isOpen, onToggle, selectedShipId }: ChatOverlayPro
   return (
     <AnimatePresence>
       <motion.div
-        className={`fixed z-50 bg-white border border-gray-300 rounded-lg shadow-2xl 
-          bottom-6 right-6 max-h-[calc(100vh-3rem)] max-w-[calc(100vw-3rem)] overflow-hidden ${
-          isExpanded 
-            ? 'w-[420px] h-[500px]'
-            : isMinimized 
-              ? 'w-80 h-12' 
-              : 'w-96 h-[480px]'
+        className={`fixed z-50 bg-white border border-gray-300 rounded-lg shadow-2xl flex flex-col
+          bottom-6 right-6 max-h-[calc(100vh-3rem)] max-w-[calc(100vw-3rem)] overflow-hidden transition-[width,height] duration-200 ${
+          isMinimized
+            ? 'w-80 h-auto'
+            : isExpanded
+              ? 'w-[760px] h-[80vh]'
+              : 'w-96 h-[520px]'
         }`}
         initial={{ scale: 0.8, opacity: 0, y: 20 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
@@ -123,7 +123,7 @@ export function ChatOverlay({ isOpen, onToggle, selectedShipId }: ChatOverlayPro
         transition={{ type: 'spring', damping: 25, stiffness: 300 }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-zinc-300 bg-gray-50 rounded-t-lg">
+        <div className="flex shrink-0 items-center justify-between px-4 py-3 border-b border-zinc-300 bg-gray-50 rounded-t-lg">
           <div className="flex items-center gap-2">
             <Bot className="w-5 h-5 text-blue-600" />
             <span className="font-semibold text-gray-900">OceanWatch AI</span>
@@ -138,25 +138,25 @@ export function ChatOverlay({ isOpen, onToggle, selectedShipId }: ChatOverlayPro
           
           <div className="flex items-center gap-1">
             {!isMinimized && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleExpand}
-                  className="text-gray-600 hover:text-gray-900"
-                >
-                  {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleMinimize}
-                  className="text-gray-600 hover:text-gray-900"
-                >
-                  <Minimize2 className="w-4 h-4" />
-                </Button>
-              </>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleExpand}
+                title={isExpanded ? 'Shrink' : 'Expand'}
+                className="text-gray-600 hover:text-gray-900"
+              >
+                {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              </Button>
             )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={toggleMinimize}
+              title={isMinimized ? 'Restore' : 'Minimize'}
+              className="text-gray-600 hover:text-gray-900"
+            >
+              {isMinimized ? <Maximize2 className="w-4 h-4" /> : <Minus className="w-4 h-4" />}
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -170,9 +170,9 @@ export function ChatOverlay({ isOpen, onToggle, selectedShipId }: ChatOverlayPro
 
         {/* Content */}
         {!isMinimized && (
-          <div className="flex flex-col h-full">
+          <div className="flex flex-col flex-1 min-h-0">
             {/* Messages (scrollable) */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               <ChatMessages 
                 messages={messages}
                 isLoading={isLoading}
@@ -184,7 +184,7 @@ export function ChatOverlay({ isOpen, onToggle, selectedShipId }: ChatOverlayPro
 
             {/* Suggestions (make suggestions area scrollable if needed) */}
             {messages.length === 0 && suggestions && (
-              <div className="p-4 border-t border-zinc-700 overflow-y-auto max-h-40">
+              <div className="shrink-0 p-4 border-t border-gray-300 overflow-y-auto max-h-40">
                 <ChatSuggestions 
                   suggestions={suggestions}
                   onSuggestionClick={handleSuggestionClick}
@@ -193,7 +193,7 @@ export function ChatOverlay({ isOpen, onToggle, selectedShipId }: ChatOverlayPro
             )}
 
             {/* Input (sticky footer) */}
-            <div className="p-4 border-t border-gray-300 sticky bottom-0 bg-white">
+            <div className="shrink-0 p-4 border-t border-gray-300 bg-white">
               <ChatInput 
                 onSendMessage={handleSendMessage}
                 isLoading={isLoading}

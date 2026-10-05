@@ -6,6 +6,7 @@ event data in MongoDB and raises alerts with its reasoning and evidence.
 Usage:
     python ship_monitor_agent.py                 # one scan over the riskiest vessels
     python ship_monitor_agent.py --max-ships 10  # smaller scan
+    python ship_monitor_agent.py --types FISHING CARRIER  # only these vessel types
     python ship_monitor_agent.py --watch 60      # rescan every 60 minutes
 
 Reads MONGODB_URI, MONGODB_DB, OPENAI_API_KEY and optionally OPENAI_MODEL and
@@ -266,13 +267,16 @@ def build_agent():
     return create_agent(llm, tools, system_prompt=SYSTEM_PROMPT)
 
 
-def pick_candidates(max_ships: int) -> List[Dict[str, Any]]:
+def pick_candidates(max_ships: int, types: Optional[List[str]] = None) -> List[Dict[str, Any]]:
     """Vessels worth an LLM's attention: risk counters first, then the most at-sea activity."""
     at_sea = {r["_id"]: r["n"] for r in db.gfw_ship_events.aggregate([
         {"$match": {"type": {"$in": ["gap", "encounter", "loitering"]}}},
         {"$group": {"_id": "$vessel_id", "n": {"$sum": 1}}},
     ])}
-    vessels = list(db.vessel.find({"noEvents": False}, {"_id": 0, "vessel_id": 1, "name": 1, "aisOff_count": 1,
+    query: Dict[str, Any] = {"noEvents": False}
+    if types:
+        query["type"] = {"$in": [t.upper() for t in types]}
+    vessels = list(db.vessel.find(query, {"_id": 0, "vessel_id": 1, "name": 1, "aisOff_count": 1,
                                                          "eventsInNoTakeMpas_count": 1,
                                                          "eventsInRfmoWithoutKnownAuthorization_count": 1}))
     for v in vessels:
@@ -284,9 +288,9 @@ def pick_candidates(max_ships: int) -> List[Dict[str, Any]]:
     return vessels[:max_ships]
 
 
-def scan(max_ships: int) -> None:
+def scan(max_ships: int, types: Optional[List[str]] = None) -> None:
     agent = build_agent()
-    candidates = pick_candidates(max_ships)
+    candidates = pick_candidates(max_ships, types)
     print(f"OceanWatch agent ({OPENAI_MODEL}) scanning {len(candidates)} vessels in '{DB_NAME}'")
     before = db.ship_alerts.count_documents({})
     for i, v in enumerate(candidates, 1):
@@ -304,10 +308,11 @@ def scan(max_ships: int) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="OceanWatch ship monitor agent")
     parser.add_argument("--max-ships", type=int, default=25)
+    parser.add_argument("--types", nargs="+", help="only vessel types, e.g. FISHING CARRIER")
     parser.add_argument("--watch", type=int, metavar="MINUTES", help="rescan on this interval instead of exiting")
     args = parser.parse_args()
     while True:
-        scan(args.max_ships)
+        scan(args.max_ships, args.types)
         if not args.watch:
             break
         time.sleep(args.watch * 60)

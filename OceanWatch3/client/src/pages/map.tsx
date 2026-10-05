@@ -439,7 +439,7 @@ export default function Map() {
   return (
     <TooltipProvider>
       <div className="w-screen h-screen relative">
-        <div className="w-80 absolute left-6 inset-y-6 bg-zinc-900/75 backdrop-blur-md rounded border border-zinc-700/60 text-zinc-50 z-20 flex flex-col">
+        <div className={`w-80 absolute left-6 top-6 ${showAlerts ? 'bottom-6' : ''} bg-zinc-900/75 backdrop-blur-md rounded border border-zinc-700/60 text-zinc-50 z-20 flex flex-col`}>
           <nav className="w-full p-4 border-b border-zinc-700/50">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -462,7 +462,8 @@ export default function Map() {
                      variant="ghost"
                      size="icon"
                      onClick={() => setShowAlerts(!showAlerts)}
-                     className="text-zinc-300 hover:text-white relative"
+                     title={showAlerts ? 'Hide alerts' : 'Show alerts'}
+                     className={`relative hover:text-white ${showAlerts ? 'text-white bg-zinc-700/60' : 'text-zinc-400'}`}
                    >
                      <Bell className="w-5 h-5" />
                      {stats && (stats.by_severity.critical + stats.by_severity.high) > 0 && (
